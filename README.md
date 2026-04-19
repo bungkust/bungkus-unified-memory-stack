@@ -1,205 +1,204 @@
 # 🧠 Bungkus Unified Memory Stack
 
-> Satu memory system buat AI agent. Gak perlu ribet cek 3 tempat berbeda.
+> One memory system for AI agents. Stop checking 3 different places.
 
-**Problem:** AI agents punya banyak memory systems yang overlap — vector DB, file-based, wiki, KG. Pusing mau pake yang mana, data tersebar, token bengkak.
+**Problem:** AI agents juggle multiple overlapping memory systems — vector DBs, file stores, knowledge graphs, wikis. Data scatters, tokens balloon, nothing stays in sync.
 
-**Solution:** Satu source of truth (MemPalace) + hybrid search + fallback recovery + auto-indexing wiki.
+**Solution:** Single source of truth (MemPalace) + hybrid search + fallback recovery + auto-indexing wiki.
 
 ---
 
-## 📊 Before vs After
+## 📊 Memory Systems Compared
 
-| Metric | Old (multi-store) | New (unified) | Delta |
-|---|---|---|---|
-| **Stores to check** | 2-3 per query | 1 | **-67%** |
-| **Tokens per query** | ~600 | ~125 | **-79%** |
-| **Tokens per session** | ~6,550 | ~2,533 | **-61%** |
-| **Latency (easy)** | ~0.8s | **0.35s** | **-56%** |
-| **Data loss risk** | High (3 stores drift) | Low (1 store + fallback) | ✅ |
+| | Hermes Default | MemPalace (raw) | LLM Wiki | Vector DB (raw) | **Unified Stack** |
+|---|---|---|---|---|---|
+| **Storage** | System memory (2200 chars) | ChromaDB + KG | Markdown files | ChromaDB only | **MemPalace (vector+KG) + wiki index** |
+| **Search** | Injected every turn (fixed) | Semantic (basic) | Grep / file read | Semantic (basic) | **Hybrid: basic → MQE auto-escalation** |
+| **Tokens/query** | ~550 (always loaded) | ~200-300 | ~200-500 (file read) | ~200-300 | **~125 (semantic, precise)** |
+| **Tokens/session (10q)** | ~5,500 | ~3,000 | ~4,000 | ~3,000 | **~2,533** |
+| **Knowledge graph** | ❌ | ✅ | ❌ (wikilinks only) | ❌ | **✅ temporal KG** |
+| **Fallback** | ❌ | ❌ | Git (manual) | ❌ | **✅ auto JSON + restore** |
+| **Wiki indexing** | ❌ | ❌ | ✅ (own format) | ❌ | **✅ auto-index to vector DB** |
+| **Deduplication** | ❌ | ❌ | Manual | ❌ | **Similarity threshold** |
+| **Session persistence** | ❌ (resets) | ✅ diary | ❌ | ❌ | **✅ diary + session logs** |
+| **Data loss risk** | High (char limit) | Medium (no backup) | Low (git) | Medium (no backup) | **Low (fallback+archive)** |
+| **Scalability** | Poor (2200 chars max) | Good | Medium (grep slow) | Good | **Good** |
+| **Setup complexity** | Zero | Medium | Low | Low | **Medium (one-time migration)** |
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-                    ┌─────────────────────┐
-                    │   USER INPUT        │
-                    └─────────┬───────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │   STORE?            │
-                    └─────────┬───────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-        ┌──────────┐   ┌──────────┐   ┌────────────┐
-        │ PROFILE  │   │ FACTS &  │   │ HUMAN-     │
-        │ CONFIG   │   │ CONVO &  │   │ READABLE   │
-        │ PREFS    │   │ RESEARCH │   │ DOCS       │
-        └────┬─────┘   └────┬─────┘   └─────┬──────┘
-             │              │               │
-             ▼              ▼               ▼
-        ┌─────────────────────────┐   ┌──────────────┐
-        │      MEMPALACE          │   │ Brain +      │
-        │   (satu2nya store)      │   │ Obsidian     │
-        │                         │   │ (git repos)  │
-        │  ┌───────────────────┐  │   └──────┬───────┘
-        │  │ ChromaDB (vector) │  │          │
-        │  │ KG (temporal)     │  │   ◄──────┘
-        │  │ Diary (events)    │  │   auto-index
-        │  └───────────────────┘  │   ke MemPalace
-        │                         │
-        │  ┌───────────────────┐  │
-        │  │ JSON Fallback     │  │
-        │  │ (kalau crash)     │  │
-        │  └───────────────────┘  │
-        └─────────────────────────┘
+                        ┌───────────────────┐
+                        │    USER INPUT     │
+                        └─────────┬─────────┘
+                                  │
+                    ┌─────────────▼─────────────┐
+                    │       MEMORY ROUTER       │
+                    │  (what type of data?)     │
+                    └─────────────┬─────────────┘
+                                  │
+              ┌───────────────────┼───────────────────┐
+              ▼                   ▼                   ▼
+        ┌───────────┐     ┌───────────┐      ┌─────────────┐
+        │  PROFILE  │     │  FACTS &  │      │  HUMAN-     │
+        │  CONFIG   │     │  CONVO &  │      │  READABLE   │
+        │  PREFS    │     │  RESEARCH │      │  DOCS       │
+        └─────┬─────┘     └─────┬─────┘      └──────┬──────┘
+              │                 │                    │
+              ▼                 ▼                    ▼
+        ┌──────────────────────────────┐    ┌──────────────┐
+        │        MEMPALACE             │    │  Brain +     │
+        │    (single source of truth)  │    │  Obsidian    │
+        │                              │    │  (git repos) │
+        │  ┌────────────────────────┐  │    └──────┬───────┘
+        │  │ ChromaDB (vector)      │  │           │
+        │  │ Knowledge Graph (temporal)│ │    ◄─────┘
+        │  │ Diary (session logs)   │  │    auto-index
+        │  └────────────────────────┘  │    on create
+        │                              │
+        │  ┌────────────────────────┐  │
+        │  │ JSON Fallback          │  │
+        │  │ (crash recovery)       │  │
+        │  └────────────────────────┘  │
+        └──────────────────────────────┘
                       │
                       ▼
-              ┌───────────────┐
-              │ BungkusSearch │
-              │ Hybrid:       │
-              │ Basic → MQE   │
-              └───────────────┘
+            ┌───────────────────┐
+            │   BungkusSearch   │
+            │   Hybrid Mode:    │
+            │   Basic → MQE     │
+            └───────────────────┘
 ```
 
 ---
 
-## 🧩 Components
+## 🔍 Deep Dive: What Each System Does
 
-| Component | Role | File |
+### Hermes Default Memory
+- **What:** 2,200 character string injected into system prompt every turn
+- **Pros:** Zero setup, always available, no dependencies
+- **Cons:** Fixed size (hard limit), no search, no structure, no persistence across sessions, every character costs tokens whether relevant or not
+- **Best for:** Tiny config snippets, bot identity
+
+### MemPalace (standalone)
+- **What:** ChromaDB vector store + temporal knowledge graph + agent diary
+- **Pros:** Semantic search, KG with time-travel queries, diary for session continuity, 96.6% recall on benchmarks
+- **Cons:** No fallback (ChromaDB crash = data loss), no wiki integration, basic search only (no query expansion), 0.558 avg similarity (mediocre)
+- **Best for:** Core memory engine (as we use it)
+
+### LLM Wiki (Karpathy pattern)
+- **What:** Markdown files with YAML frontmatter, wikilinks, SCHEMA.md conventions
+- **Pros:** Human-readable, git-backed, Obsidian-compatible, structured organization
+- **Cons:** No semantic search (grep only), no KG (wikilinks are weak edges), manual maintenance, staleness without recompilation
+- **Best for:** Reference documentation, knowledge that humans also read
+
+### Raw Vector DB (ChromaDB standalone)
+- **What:** Embedding-based similarity search over document chunks
+- **Pros:** Fast, scalable, good recall
+- **Cons:** No structure (flat chunks), no relationships, no temporal queries, no fallback, chunk fragmentation
+- **Best for:** RAG pipelines, document search
+
+### Unified Stack (this project)
+- **What:** MemPalace as core + hybrid search + fallback + wiki auto-indexing
+- **Pros:** All benefits of MemPalace + better search + crash recovery + wiki integration + 61% fewer tokens
+- **Cons:** More complex setup (one-time migration), MemPalace dependency
+- **Best for:** Production AI agent memory
+
+---
+
+## 🎯 Use Cases
+
+### 1. AI Agent Long-Term Memory
+Store conversations, decisions, and facts across sessions. Semantic search finds relevant context without loading entire history.
+
+### 2. Knowledge Base with Search
+Index wiki pages (Brain, Obsidian, Notion export) into vector DB. Bot can answer questions about your documentation without manual file reading.
+
+### 3. Multi-Project Tracking
+Different wings for different projects (kulino, hermes, research). Filtered search keeps results relevant.
+
+### 4. Entity Relationship Tracking
+Knowledge graph tracks who-what-when. "What do we know about X?" returns temporal facts.
+
+### 5. Crash-Resilient Memory
+Fallback JSON catches writes when ChromaDB is down. Auto-restores on recovery. No data loss.
+
+---
+
+## 📈 Token Consumption
+
+### Per Query
+
+| Step | Old (multi-store) | New (unified) |
 |---|---|---|
-| **MemPalace** | Core memory store (vector + KG + diary) | [bungkus_mempalace.py](src/bungkus_mempalace.py) |
-| **BungkusSearch** | Hybrid search: basic → MQE (auto-escalation) | [bungkus_search.py](src/bungkus_search.py) |
-| **Wiki Ingest Patch** | Auto-index wiki pages to MemPalace | [wiki_ingest_patch.py](src/wiki_ingest_patch.py) |
-| **Migration Script** | One-click migration from multi-store | [migrate.py](scripts/migrate.py) |
-| **Flow Tests** | 22-test suite for verification | [test-flow.py](scripts/test-flow.py) |
+| Load system memory | 550 tokens | 543 tokens |
+| Load file-based memory | 200-400 tokens | 0 (not needed) |
+| Search vector DB | 200-300 tokens | 125 tokens |
+| Merge results | 100-200 tokens | 0 (single source) |
+| **Total** | **~950-1250** | **~668** |
 
----
+### Per Session (10 queries)
 
-## 🔧 Rules
+| | Old | New | Savings |
+|---|---|---|---|
+| System memory | 550 | 543 | -7 |
+| Wake-up context | 0 | 740 | +740 |
+| Per-query average | 600 | 125 | -475 |
+| **Session total** | **~6,550** | **~2,533** | **-61%** |
 
-```
-RULE 1 — STORAGE
-  Everything → MemPalace
-  Except human docs → Brain/Obsidian (git)
+### Why New Saves Tokens
 
-RULE 2 — WIKI INGEST
-  Create page di Brain/Obsidian
-    → auto-add drawer ke MemPalace
-
-RULE 3 — FALLBACK
-  ChromaDB up   → normal path
-  ChromaDB down  → write to JSON
-  ChromaDB back  → auto-flush JSON → ChromaDB
-
-RULE 4 — SEARCH
-  Always BungkusSearch (hybrid)
-  Basic first (0.35s), MQE if low confidence (1.44s)
-
-RULE 5 — USER PROFILE
-  MemPalace wing=user ONLY
-  Old file-based memory → archived
-```
-
----
-
-## 📈 Token Consumption Analysis
-
-### How tokens are consumed per query:
-
-```
-OLD APPROACH (multi-store):
-├─ Load system memory:        550 tokens (always)
-├─ Load Light Memory file:    200-400 tokens (grep)
-├─ Search MemPalace:          200-300 tokens (semantic)
-├─ Merge + dedup:             100-200 tokens (processing)
-└─ Total per query:           ~950-1250 tokens
-
-NEW APPROACH (unified):
-├─ Load system memory:        543 tokens (always)
-├─ One BungkusSearch:         125 tokens (semantic)
-└─ Total per query:           ~668 tokens
-
-SAVINGS: ~300-600 tokens/query (30-50%)
-```
-
-### Per session (10 queries):
-
-```
-OLD: 550 + (10 × 600)  = ~6,550 tokens/session
-NEW: 543 + 740 + (10 × 125) = ~2,533 tokens/session
-
-SAVINGS: ~4,000 tokens/session (61% reduction)
-```
-
-### Why:
-
-| Old (multi-store) | New (unified) |
+| Old Approach | New Approach |
 |---|---|
-| Load 1-3 files per query | Zero files loaded |
-| Grep untuk cari keyword | Semantic search (precise) |
-| Search 2-3 stores | 1 store only |
-| Merge results dari multiple sources | 1 result set |
-| Filter duplicates | No duplicates |
+| Load 1-3 markdown files per query | Zero files loaded |
+| Grep for keywords (imprecise, noisy) | Semantic search (precise) |
+| Search 2-3 separate stores | 1 store only |
+| Merge + deduplicate results | 1 result set, no dupes |
+| Load irrelevant context | Only relevant chunks |
 
 ---
 
-## 🚀 Performance
+## ⚡ Hybrid Search (BungkusSearch)
 
-| Operation | Latency |
-|---|---|
-| Wake-up (session start) | 0.01s |
-| Basic search | 0.35s |
-| MQE search (hard queries) | 1.44s |
-| Hybrid (auto) | ~0.55s avg |
-| Store fact | 0.37s |
-| KG query | <0.01s |
-| Diary write | 0.37s |
+```
+Query received
+      │
+      ▼
+Step 1: Basic search (1 ChromaDB call, ~0.35s)
+      │
+      ├─ Top result similarity >= 0.4 → Return ✅ (fast path, ~80% of queries)
+      │
+      └─ Top result similarity < 0.4 → Step 2
+                                          │
+                                          ▼
+                                  Multi-Query Expansion + RRF
+                                  (8 parallel searches, ~1.44s)
+                                          │
+                                          ├─ Original query (weight 1.0)
+                                          ├─ Keyword extraction (weight 0.6 ×3)
+                                          ├─ Phrase variations (weight 0.7 ×2)
+                                          ├─ Domain expansion (weight 0.5 ×2)
+                                          │
+                                          ▼
+                                  Weighted RRF merge → Return
+```
+
+**Key design decisions:**
+- Expansion uses dictionary-based rules (NO LLM calls = 0 extra tokens)
+- Trade-off is latency, not tokens
+- Auto-escalation: 80% of queries use fast path (0.35s), only hard queries pay the 1.44s cost
+- Average hybrid latency: ~0.55s
 
 ---
 
-## 🔄 Hybrid Search (BungkusSearch)
+## 🛡️ Fallback & Recovery
 
 ```
-Query masuk
-    │
-    ▼
-Step 1: Basic search (1 ChromaDB call, 0.35s)
-    │
-    ├─ Top result sim >= 0.4 → Return (fast path, 80% queries)
-    │
-    └─ Top result sim < 0.4 → Step 2
-                                  │
-                                  ▼
-                          Multi-Query Expansion + RRF
-                          (8 parallel searches, 1.44s)
-                                  │
-                                  ├─ Original (weight 1.0)
-                                  ├─ Keywords (weight 0.6×3)
-                                  ├─ Variations (weight 0.7×2)
-                                  ├─ Domain expansion (weight 0.5×2)
-                                  │
-                                  ▼
-                          Weighted RRF merge → Return
-```
-
-**Key insight:** MQE uses dictionary-based expansion (NO LLM calls = 0 extra tokens). Pure latency trade-off, not token trade-off.
-
----
-
-## 🛡️ Fallback Architecture
-
-```
-Normal:
-  Bot → MemPalace (ChromaDB) → results
-
-Crash:
-  Bot → MemPalace (fail) → JSON fallback file → results
-  
-Recovery:
-  Bot → MemPalace (back) → restore_from_fallback() → flush JSON → normal
+Normal:     Bot → MemPalace (ChromaDB) → results
+Crash:      Bot → MemPalace (fail) → JSON fallback → results
+Recovery:   Bot → MemPalace (back) → restore_from_fallback() → flush JSON → normal
 ```
 
 **Fallback file:** `~/.hermes/memory/mempalace-fallback.json`
@@ -207,33 +206,33 @@ Recovery:
 
 ---
 
-## 📦 Migration
+## 🚀 Performance
+
+| Operation | Latency | Notes |
+|---|---|---|
+| Wake-up (session start) | 0.01s | Load identity + top memories |
+| Basic search | 0.35s | 1 ChromaDB call |
+| MQE search (hard queries) | 1.44s | 8 parallel calls + RRF |
+| Hybrid (auto) | ~0.55s | Weighted average |
+| Store fact | 0.37s | Embed + insert |
+| KG query | <0.01s | SQLite lookup |
+| Diary write | 0.37s | Embed + insert |
+
+---
+
+## 🔄 Migration
 
 From 4 separate memory systems to 1:
 
 ```bash
-# 1. Backup everything
-python3 scripts/migrate.py --phase backup
-
-# 2. Migrate data
-python3 scripts/migrate.py --phase migrate
-
-# 3. Clean test data
-python3 scripts/migrate.py --phase clean
-
-# 4. Index wiki pages
-python3 scripts/migrate.py --phase index
-
-# 5. Fix infrastructure
-python3 scripts/migrate.py --phase fix
-
-# 6. Verify
-python3 scripts/migrate.py --phase verify
-```
-
-Or all at once:
-```bash
+# Full migration (all phases)
 python3 scripts/migrate.py --all
+
+# Or individual phases
+python3 scripts/migrate.py --phase backup    # Phase 1: Backup everything
+python3 scripts/migrate.py --phase migrate   # Phase 2: Migrate data
+python3 scripts/migrate.py --phase index     # Phase 4: Index wiki pages
+python3 scripts/migrate.py --phase verify    # Phase 6: Verify
 ```
 
 ---
@@ -241,13 +240,13 @@ python3 scripts/migrate.py --all
 ## 🧪 Testing
 
 ```bash
-# Quick test (22 tests, ~18s)
+# Flow tests (22 tests, ~18s)
 python3 scripts/test-flow.py
 
-# Hard test (stress + edge cases, ~30s)
+# Hard tests (stress + edge cases, ~30s)
 python3 scripts/hard-flow-test.py
 
-# Deep test (all flows, ~30s)
+# Deep tests (all flows, ~30s)
 python3 scripts/deep-flow-test.py
 ```
 
@@ -267,7 +266,7 @@ python3 scripts/deep-flow-test.py
 │   └── closets/
 
 ~/.hermes/memory/
-├── _archived/                      # Old Light Memory (backup)
+├── _archived/                      # Old file-based memory (backup)
 │   ├── user/
 │   ├── agent/
 │   └── openviking-concepts.md
@@ -277,24 +276,24 @@ python3 scripts/deep-flow-test.py
 
 ---
 
-## 🎯 When to Use What
+## 🧩 Components
 
-| Data Type | Store | Why |
-|---|---|---|
-| User profile/prefs | MemPalace (wing=user) | Semantic recall |
-| Facts & conversations | MemPalace (any wing) | Core function |
-| Research & analysis | MemPalace (wing=research) + Brain/Obsidian | Bot recall + human read |
-| Config & IDs | MemPalace (wing=hermes) | Quick lookup |
-| KG relationships | MemPalace (KG) | Temporal facts |
-| Session logs | MemPalace (diary) | Agent memory |
-| Human-readable docs | Brain (TLDR) + Obsidian (deep) | Manual reading |
+| File | Role |
+|---|---|
+| [bungkus_mempalace.py](src/bungkus_mempalace.py) | Enhanced MemPalace wrapper with fallback + restore |
+| [bungkus_search.py](src/bungkus_search.py) | Hybrid search: basic → MQE auto-escalation |
+| [wiki_ingest_patch.py](src/wiki_ingest_patch.py) | Auto-index wiki pages to MemPalace on create |
+| [migrate.py](scripts/migrate.py) | One-click migration orchestrator |
+| [deep-flow-test.py](scripts/deep-flow-test.py) | Comprehensive flow test suite |
+| [hard-flow-test.py](scripts/hard-flow-test.py) | Stress test + edge cases |
 
 ---
 
-## 🔗 Related
+## 🔗 Related Projects
 
-- [MemPalace](https://github.com/MemPalace/mempalace) — Core memory engine
+- [MemPalace](https://github.com/MemPalace/mempalace) — Core memory engine (46.2k stars)
 - [Hermes Agent](https://github.com/joaompfp/hermes) — AI agent platform
+- [Hermes VS Code](https://github.com/joaompfp/hermes-vscode) — VS Code extension for Hermes
 - [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — Wiki pattern inspiration
 
 ---

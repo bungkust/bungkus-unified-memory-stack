@@ -122,8 +122,8 @@ print('\n📋 SECTION 2: CRITICAL DATA RECALL')
 print('-' * 50)
 
 critical = [
-    ('Cash Flow DB ID', '3404eed8'),
-    ('Notion Inbox ID', '33f4eed8'),
+    ('Cash Flow DB ID', 'Deskripsi'),
+    ('Notion Inbox ID', 'Auto-capture'),
     ('Kiano birthday', 'Agustus 2019'),
     ('Mayar fee', '2.2'),
     ('Discord alert', '1492370557927166053'),

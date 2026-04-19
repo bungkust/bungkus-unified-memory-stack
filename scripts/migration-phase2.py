@@ -31,9 +31,9 @@ print("=" * 60)
 # ─── USER PROFILE ───
 print("\n📂 user/profile")
 add("user", "profile", "Bot utama: Kulino Bot (kusbot), persona helpful. User orang Jogja. WAJIB 'aku/kamu', JANGAN 'gw/lo'. Ramah khas Jawa, sopan tapi santai.")
-add("user", "profile", "User product-minded, pakai framework JTBD/BMC/PMF. VPS SumoPod 43.157.229.243 bukan milik user sendiri — bantuin orang lain. Badminton GOR DS.")
+add("user", "profile", "User product-minded, pakai framework JTBD/BMC/PMF. VPS bukan milik user sendiri — bantuin orang lain. Badminton GOR DS.")
 add("user", "profile", "User punya anak: Kiano, lahir 27 Agustus 2019. Cash Flow dan Tumbuh Kembang di Kulino Family workspace Notion.")
-add("user", "profile", "User prefer SHORT output, hemat token. Caveman 'lite' mode. Prefer Obsidian. Laptop SSH='Bungkuss'.")
+add("user", "profile", "User prefer SHORT output, hemat token. Caveman 'lite' mode. Prefer Obsidian.")
 
 # ─── USER PREFERENCES ───
 print("\n📂 user/preferences")
@@ -44,15 +44,15 @@ add("user", "preferences", "User prefer text reports sederhana, bukan dashboard.
 
 # ─── USER ENTITIES ───
 print("\n📂 user/entities")
-add("user", "entities", "Notion workspace: PARA format. Inbox page ID: 33f4eed8-ed0d-81ca-ad6d-d8c4892dffb8. Auto-capture dari Discord channel #task-and-note.")
-add("user", "entities", "Cash Flow DB ID: 3404eed8-ed0d-81c6-b676-fd1ff2df7973. Title='Deskripsi' (item name only, NO qty/price). WAJIB query schema dulu sebelum create.")
+add("user", "entities", "Notion workspace: PARA format. Inbox page ID di Notion. Auto-capture dari Discord channel #task-and-note.")
+add("user", "entities", "Cash Flow DB ID di Notion. Title='Deskripsi' (item name only, NO qty/price). WAJIB query schema dulu sebelum create.")
 add("user", "entities", "Cash Flow DB format: Deskripsi, Qty(number), Harga Satuan(number), Jumlah(=Qty×Satuan), Tempat Beli(text), Kategori, Metode Bayar, Tanggal, Tipe. Catatan for extra notes only.")
 
 # KG entries for entities
 tool_kg_add("user", "has_child", "kiano")
 tool_kg_add("kiano", "born", "2019-08-27")
 tool_kg_add("user", "uses_platform", "notion")
-tool_kg_add("user", "has_vps", "sumopod-43.157.229.243")
+tool_kg_add("user", "has_vps", "sumopod")
 tool_kg_add("user", "plays_badminton_at", "gor-ds")
 print("  ✅ KG: 5 triples added")
 

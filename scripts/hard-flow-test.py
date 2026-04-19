@@ -324,7 +324,7 @@ print('-' * 50)
 
 # Key facts from system memory (the injected context)
 system_facts = [
-    ('Cash Flow DB', '3404eed8'),
+    ('Cash Flow DB', 'Deskripsi'),
     ('Play Store locale', 'id'),
     ('Discord alert', '1492370557927166053'),
     ('StarHabit PIN', '5555'),
